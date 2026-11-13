@@ -1,0 +1,1489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shape operator runbook</title>
+<meta name="description" content="Operator runbook for building Shape, tracing a capture, compiling a decode artifact, and verifying edits.">
+<script>
+(function () {
+  var stored = null;
+  try { stored = localStorage.getItem('shape-theme'); } catch (e) {}
+  var prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = stored || (prefersDark ? 'dark' : 'light');
+})();
+</script>
+<style>
+:root {
+  --bg: #FCFBF7;
+  --surface: #F3F1E9;
+  --surface-2: #EAE7DC;
+  --border: #DAD6C7;
+  --text: #1A1917;
+  --muted: #6B6659;
+  --accent: #8A5B00;
+  --accent-soft: #F5E9CE;
+  --code-bg: #21201C;
+  --code-text: #EDEAE2;
+  --code-border: #38362E;
+  --tok-cmd: #E0A93B;
+  --tok-str: #B8C98A;
+  --tok-com: #7C776B;
+  --tok-flag: #D98E3B;
+  --note: #4A6B8A;
+  --note-bg: #E9EEF2;
+  --tip: #57794C;
+  --tip-bg: #EBF0E2;
+  --warn: #9A6620;
+  --warn-bg: #F6EDDB;
+  --grid: rgba(26, 25, 23, 0.045);
+  --focus: #8A5B00;
+  --overlay: rgba(0, 0, 0, 0.36);
+  --code-head-tint: rgba(255, 255, 255, 0.035);
+  --print-bg: #FFFFFF;
+  --print-text: #000000;
+  --print-border: #999999;
+  --shadow: none;
+  --font-display: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  --font-body: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-ui: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  --topbar: 60px;
+  --radius: 2px;
+}
+[data-theme="dark"] {
+  --bg: #121210;
+  --surface: #191917;
+  --surface-2: #20201D;
+  --border: #2C2C27;
+  --text: #E6E4DC;
+  --muted: #96938A;
+  --accent: #E0A93B;
+  --accent-soft: #2E2616;
+  --code-bg: #131311;
+  --code-text: #E4E0D6;
+  --code-border: #26251F;
+  --tok-cmd: #E0A93B;
+  --tok-str: #B8C98A;
+  --tok-com: #7C776B;
+  --tok-flag: #D98E3B;
+  --note: #8FAEC9;
+  --note-bg: #232A31;
+  --tip: #98BA8A;
+  --tip-bg: #242B1F;
+  --warn: #D9A85C;
+  --warn-bg: #322A1C;
+  --grid: rgba(230, 228, 220, 0.045);
+  --focus: #E0A93B;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.62;
+  text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+button, input { font: inherit; }
+button { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.skip-link {
+  position: absolute; left: 12px; top: -60px; z-index: 100;
+  background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: var(--radius);
+}
+.skip-link:focus { top: 10px; }
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  height: var(--topbar);
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 18px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  min-width: 208px; color: var(--text); text-decoration: none;
+}
+.brand-mark {
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--accent); font-family: var(--font-ui); font-weight: 700; font-size: 0.82rem;
+  letter-spacing: -0.08em;
+}
+.brand-name { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.04em; }
+.brand-sub { color: var(--muted); font-family: var(--font-ui); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; }
+.search {
+  flex: 1; min-width: 0; max-width: 520px; position: relative;
+}
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search input {
+  width: 100%; min-height: 40px;
+  padding: 8px 58px 8px 38px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: var(--font-ui); font-size: 0.78rem;
+}
+.search input::placeholder { color: var(--muted); }
+.search kbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted);
+  padding: 2px 6px; font-family: var(--font-ui); font-size: 0.66rem; border-radius: var(--radius);
+}
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.icon-btn {
+  display: inline-grid; place-items: center;
+  width: 44px; height: 44px; padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--surface); border-color: var(--border); }
+.menu-btn { display: none; }
+.icon-sun, .icon-moon { display: none; }
+[data-theme="light"] .icon-moon { display: block; }
+[data-theme="dark"] .icon-sun { display: block; }
+.overlay {
+  display: none; position: fixed; inset: var(--topbar) 0 0; z-index: 35;
+  background: var(--overlay);
+}
+body.nav-open .overlay { display: block; }
+.shell {
+  display: grid;
+  grid-template-columns: 258px minmax(0, 1fr) 220px;
+  max-width: 1500px; margin: 0 auto;
+}
+.sidebar {
+  position: sticky; top: var(--topbar);
+  height: calc(100vh - var(--topbar));
+  overflow-y: auto;
+  padding: 22px 16px 48px;
+  border-right: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+.nav-group { margin: 0 0 22px; }
+.nav-label {
+  margin: 0 0 7px 10px;
+  color: var(--muted); font-family: var(--font-ui); font-size: 0.64rem;
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.nav-link {
+  display: block; padding: 7px 10px;
+  color: var(--muted); text-decoration: none;
+  border-left: 2px solid transparent;
+  font-size: 0.88rem; line-height: 1.35;
+}
+.nav-link:hover { color: var(--text); background: var(--surface); }
+.nav-link.is-active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); font-weight: 650; }
+.nav-link[hidden] { display: none; }
+.nav-empty { display: none; padding: 10px; color: var(--muted); font-size: 0.82rem; }
+.nav-empty.is-visible { display: block; }
+.main {
+  min-width: 0; padding: 42px 40px 96px;
+}
+.content { max-width: 72ch; }
+.breadcrumb {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 18px; color: var(--muted);
+  font-family: var(--font-ui); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em;
+}
+.breadcrumb span { color: var(--border); }
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 700; letter-spacing: -0.035em;
+  line-height: 1.12; text-wrap: balance;
+}
+h1 { margin: 0 0 18px; font-size: clamp(2.35rem, 5.2vw, 4.3rem); }
+h2 { margin: 3.4rem 0 1rem; font-size: clamp(1.45rem, 2.4vw, 1.9rem); scroll-margin-top: calc(var(--topbar) + 18px); }
+h3 { margin: 2.1rem 0 0.65rem; font-size: clamp(1.08rem, 1.6vw, 1.24rem); scroll-margin-top: calc(var(--topbar) + 18px); }
+h4 { margin: 1.6rem 0 0.5rem; font-size: 0.98rem; }
+h2 .anchor, h3 .anchor {
+  margin-left: 8px; color: var(--border); text-decoration: none; opacity: 0;
+  font-weight: 400;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+p { margin: 0 0 1rem; }
+.content ul, .content ol { margin: 0 0 1.2rem; padding-left: 1.35rem; }
+.content li { margin: 0.35rem 0; }
+.content li::marker { color: var(--accent); }
+strong { font-weight: 650; }
+.lede { font-size: 1.13rem; color: var(--muted); max-width: 64ch; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 28px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  padding: 4px 8px; border-radius: var(--radius);
+  color: var(--muted); font-family: var(--font-ui); font-size: 0.68rem;
+}
+.pill strong { color: var(--text); font-weight: 650; }
+.callout {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px;
+  margin: 1.4rem 0; padding: 14px 16px;
+  border: 1px solid var(--border); border-left: 3px solid var(--note);
+  background: var(--note-bg); border-radius: var(--radius);
+}
+.callout svg { margin-top: 2px; }
+.callout p:last-child { margin-bottom: 0; }
+.callout-label { display: block; margin-bottom: 2px; font-family: var(--font-ui); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
+.callout.note { color: var(--note); border-left-color: var(--note); background: var(--note-bg); }
+.callout.tip { color: var(--tip); border-left-color: var(--tip); background: var(--tip-bg); }
+.callout.warn { color: var(--warn); border-left-color: var(--warn); background: var(--warn-bg); }
+.callout .callout-body { color: var(--text); }
+.step {
+  position: relative; margin: 2.1rem 0 2.4rem; padding-left: 3.7rem;
+}
+.step::before {
+  content: ""; position: absolute; left: 1.22rem; top: 2.65rem; bottom: -2.3rem;
+  width: 1px; background: var(--border);
+}
+.step:last-child::before { display: none; }
+.step-num {
+  position: absolute; left: 0; top: 0;
+  display: grid; place-items: center;
+  width: 2.5rem; height: 2.5rem;
+  border: 1px solid var(--accent); background: var(--accent-soft);
+  color: var(--accent); font-family: var(--font-ui); font-size: 0.78rem; font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.step h3 { margin-top: 0.15rem; }
+.step p:last-child { margin-bottom: 0; }
+.codeblock {
+  margin: 1rem 0 1.3rem; border: 1px solid var(--code-border); border-radius: var(--radius);
+  background: var(--code-bg); color: var(--code-text); overflow: hidden;
+}
+.code-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 34px; padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--code-border); background: var(--code-head-tint);
+}
+.code-lang { color: var(--tok-com); font-family: var(--font-ui); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.copy-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 28px; padding: 3px 9px;
+  background: transparent; color: var(--code-text); border: 1px solid var(--code-border);
+  border-radius: var(--radius); cursor: pointer; font-family: var(--font-ui); font-size: 0.68rem;
+}
+.copy-btn:hover { border-color: var(--tok-cmd); color: var(--tok-cmd); }
+.copy-btn.is-copied { border-color: var(--tok-str); color: var(--tok-str); }
+pre { margin: 0; padding: 14px 16px 16px; overflow-x: auto; font-family: var(--font-ui); font-size: 0.82rem; line-height: 1.72; tab-size: 2; }
+pre code { font-family: inherit; }
+.tok-cmd { color: var(--tok-cmd); }
+.tok-str { color: var(--tok-str); }
+.tok-com { color: var(--tok-com); }
+.tok-flag { color: var(--tok-flag); }
+code:not(pre code) {
+  padding: 1px 5px; border: 1px solid var(--border); background: var(--surface-2);
+  border-radius: var(--radius); font-family: var(--font-ui); font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+.table-wrap { margin: 1rem 0 1.4rem; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; min-width: 620px; font-size: 0.88rem; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+th { background: var(--surface); color: var(--muted); font-family: var(--font-ui); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 650; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.checklist { list-style: none; margin: 1rem 0 1.4rem; padding: 0; border: 1px solid var(--border); background: var(--surface); }
+.checklist li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.checklist li:last-child { border-bottom: 0; }
+.checklist input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); flex: none; }
+.checklist label { cursor: pointer; }
+.tabs { margin: 1.2rem 0 1.6rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.tab-list { display: flex; flex-wrap: wrap; gap: 0; background: var(--surface); border-bottom: 1px solid var(--border); }
+.tab-btn {
+  min-height: 42px; padding: 8px 14px; border: 0; border-right: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; font-family: var(--font-ui); font-size: 0.74rem;
+}
+.tab-btn:hover { color: var(--text); background: var(--surface-2); }
+.tab-btn[aria-selected="true"] { color: var(--accent); background: var(--bg); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab-panel { padding: 0; }
+.tab-panel[hidden] { display: none; }
+.tab-panel .codeblock { margin: 0; border: 0; border-radius: 0; }
+.tab-panel p { margin: 12px 14px; }
+.toc {
+  position: sticky; top: var(--topbar);
+  max-height: calc(100vh - var(--topbar)); overflow-y: auto;
+  padding: 42px 20px 48px 10px;
+}
+.toc-title { margin: 0 0 10px; color: var(--muted); font-family: var(--font-ui); font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.14em; }
+.toc a { display: block; padding: 4px 0 4px 10px; border-left: 1px solid var(--border); color: var(--muted); text-decoration: none; font-size: 0.8rem; line-height: 1.35; }
+.toc a:hover { color: var(--text); border-left-color: var(--muted); }
+.toc a.is-active { color: var(--accent); border-left-color: var(--accent); }
+.toc a.toc-sub { padding-left: 20px; font-size: 0.74rem; }
+.toc-inline { display: none; margin: 0 0 2rem; border: 1px solid var(--border); background: var(--surface); }
+.toc-inline summary { padding: 10px 12px; cursor: pointer; font-family: var(--font-ui); font-size: 0.74rem; color: var(--muted); }
+.toc-inline .toc-links { padding: 0 12px 10px; }
+.toc-inline a { display: block; padding: 5px 0; color: var(--muted); text-decoration: none; font-size: 0.84rem; }
+.footer {
+  margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--border);
+  color: var(--muted); font-family: var(--font-ui); font-size: 0.72rem;
+}
+.footer a { color: var(--muted); }
+.kbd-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 1rem 0; }
+.kbd-row kbd { border: 1px solid var(--border); background: var(--surface); padding: 3px 7px; border-radius: var(--radius); font-family: var(--font-ui); font-size: 0.72rem; }
+@media (max-width: 1120px) {
+  .shell { grid-template-columns: 248px minmax(0, 1fr); }
+  .toc { display: none; }
+  .toc-inline { display: block; }
+  .main { padding-right: 32px; }
+}
+@media (max-width: 820px) {
+  .brand { min-width: 0; }
+  .brand-sub { display: none; }
+  .search { max-width: none; }
+  .search kbd { display: none; }
+  .search input { padding-right: 12px; }
+  .menu-btn { display: inline-grid; }
+  .shell { display: block; }
+  .sidebar {
+    position: fixed; left: 0; top: var(--topbar); bottom: 0; z-index: 40;
+    width: min(86vw, 320px); height: auto;
+    background: var(--bg); border-right: 1px solid var(--border);
+    transform: translateX(-102%); transition: transform 180ms ease;
+    box-shadow: none;
+  }
+  body.nav-open .sidebar { transform: translateX(0); }
+  .main { padding: 30px 20px 80px; }
+  .content { max-width: none; }
+  h1 { font-size: clamp(2.2rem, 11vw, 3.4rem); }
+  .step { padding-left: 2.9rem; }
+  .step::before { left: 0.92rem; }
+  .step-num { width: 2rem; height: 2rem; font-size: 0.68rem; }
+  .tab-btn { flex: 1 1 auto; }
+}
+@media (max-width: 520px) {
+  .topbar { gap: 8px; padding: 0 10px; }
+  .brand-name { font-size: 0.92rem; }
+  .brand-mark { width: 30px; height: 30px; }
+  .search input { min-height: 38px; font-size: 0.72rem; }
+  .main { padding-left: 16px; padding-right: 16px; }
+  pre { font-size: 0.76rem; padding: 12px; }
+  .callout { grid-template-columns: 1fr; }
+  .callout svg { display: none; }
+}
+@media print {
+  .topbar, .sidebar, .toc, .toc-inline, .overlay, .copy-btn { display: none !important; }
+  .shell { display: block; }
+  .main { padding: 0; }
+  body { background: var(--print-bg); color: var(--print-text); }
+  .codeblock { border: 1px solid var(--print-border); background: var(--print-bg); color: var(--print-text); }
+  .code-head { display: none; }
+  .step::before { display: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to runbook</a>
+<header class="topbar">
+  <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <a class="brand" href="#top" aria-label="Shape runbook home">
+    <span class="brand-mark" aria-hidden="true">&gt;_</span>
+    <span>
+      <span class="brand-name">Shape</span>
+      <span class="brand-sub">operator runbook</span>
+    </span>
+  </a>
+  <div class="search" role="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+    <input id="nav-search" type="search" placeholder="Filter sections" aria-label="Filter runbook sections" autocomplete="off">
+    <kbd>Ctrl K</kbd>
+  </div>
+  <div class="top-actions">
+    <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch to dark theme">
+      <svg class="icon-moon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg>
+      <svg class="icon-sun" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+</header>
+<div class="overlay" id="overlay"></div>
+<div class="shell">
+  <nav class="sidebar" id="sidebar" aria-label="Runbook navigation">
+    <div class="nav-group">
+      <p class="nav-label">Start here</p>
+      <a class="nav-link" href="#when-to-use">When to use this</a>
+      <a class="nav-link" href="#fast-path">Fast path</a>
+      <a class="nav-link" href="#environment">Environment and inputs</a>
+    </div>
+    <div class="nav-group">
+      <p class="nav-label">Prepare</p>
+      <a class="nav-link" href="#build-cli">Build the CLI</a>
+      <a class="nav-link" href="#build-sdk">Build the SDK</a>
+      <a class="nav-link" href="#acquire-capture">Acquire a capture</a>
+    </div>
+    <div class="nav-group">
+      <p class="nav-label">Recover</p>
+      <a class="nav-link" href="#trace-program">Trace the program</a>
+      <a class="nav-link" href="#compile-artifact">Compile the artifact</a>
+    </div>
+    <div class="nav-group">
+      <p class="nav-label">Decode</p>
+      <a class="nav-link" href="#edit-encode">Decode, edit, encode</a>
+      <a class="nav-link" href="#verification">Verification gate</a>
+    </div>
+    <div class="nav-group">
+      <p class="nav-label">Operate</p>
+      <a class="nav-link" href="#test-matrix">Test matrix</a>
+      <a class="nav-link" href="#troubleshooting">Troubleshooting</a>
+      <a class="nav-link" href="#rollback">Rollback</a>
+      <a class="nav-link" href="#exit-codes">Exit codes</a>
+    </div>
+    <div class="nav-group">
+      <p class="nav-label">Reference</p>
+      <a class="nav-link" href="#documents">Documents</a>
+      <a class="nav-link" href="#file-map">File map</a>
+      <a class="nav-link" href="#background">Background</a>
+    </div>
+    <p class="nav-empty" id="nav-empty">No section matches that filter.</p>
+  </nav>
+  <main class="main" id="main">
+    <article class="content" id="top">
+      <div class="breadcrumb">Operations <span>/</span> Shape <span>/</span> Runbook</div>
+      <h1>Shape operator runbook</h1>
+      <p class="lede">Use this when a capture must become named signal fields, or when a saved decode artifact has stopped matching the browser it came from. Work top to bottom. Do not skip the completion check after tracing.</p>
+      <div class="meta-row">
+        <span class="pill"><strong>Scope</strong> v0.1.0</span>
+        <span class="pill"><strong>Host</strong> macOS/Linux; Windows CLI</span>
+        <span class="pill"><strong>Rust</strong> 1.92+</span>
+        <span class="pill"><strong>Reviewed</strong> 2026-11-12</span>
+      </div>
+      <details class="toc-inline">
+        <summary>On this page</summary>
+        <div class="toc-links">
+          <a href="#when-to-use">When to use this</a>
+          <a href="#fast-path">Fast path</a>
+          <a href="#environment">Environment and inputs</a>
+          <a href="#build-cli">Build the CLI</a>
+          <a href="#build-sdk">Build the SDK</a>
+          <a href="#acquire-capture">Acquire a capture</a>
+          <a href="#trace-program">Trace the program</a>
+          <a href="#compile-artifact">Compile the artifact</a>
+          <a href="#edit-encode">Decode, edit, encode</a>
+          <a href="#verification">Verification gate</a>
+          <a href="#test-matrix">Test matrix</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#rollback">Rollback</a>
+          <a href="#exit-codes">Exit codes</a>
+          <a href="#documents">Documents</a>
+          <a href="#file-map">File map</a>
+          <a href="#background">Background</a>
+        </div>
+      </details>
+
+      <h2 id="when-to-use">When to use this runbook</h2>
+      <p>Use this runbook when you have a Shape-style capture and need named signal fields, or when a decode artifact that used to work no longer matches the request in front of you. It covers the CLI path first because that path produces the artifact every SDK consumes.</p>
+      <p>It is also the right page when you need to prove a release is usable: a complete trace, a compiled artifact, a successful decode, and a passing contract check. The procedure is written for an operator at a terminal, not for someone reading the engine internals.</p>
+      <div class="callout note">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Use it when</span>
+          <p>You have a launcher and kernel from one build, headers from the same browser request, and you need decoded fields, an edit round trip, or a reusable artifact for an application.</p>
+        </div>
+      </div>
+      <p>Do not use this runbook as a guide to executing captured JavaScript. Shape parses source and runs admitted symbolic recipes. It never runs the captured program. If you need browser automation or a live traffic capture, that work happens outside Shape.</p>
+      <p>Stop and ask for help before you continue if any of these are true:</p>
+      <ul>
+        <li>The artifact, headers, session, or site ID came from different captures.</li>
+        <li>A trace exited with status 3 and you have not inspected the stopped functions.</li>
+        <li>You are about to overwrite the only copy of an artifact or capture.</li>
+        <li>You are running a release link while another Cargo build is using the same target directory.</li>
+      </ul>
+
+      <h2 id="fast-path">Fast path</h2>
+      <p>This is the shortest path from a clean checkout to a decoded capture. Each step has a verification point. If a step fails, jump to <a href="#troubleshooting">Troubleshooting</a> instead of pushing forward with a partial result.</p>
+      <div class="step">
+        <span class="step-num">01</span>
+        <h3>Build the release CLI</h3>
+        <p>Run from the repository root. Release mode matters: debug builds are far slower on real captures. On a fresh machine, complete the bootstrap in <a href="#environment">Environment and inputs</a> first.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">cargo</span> build <span class="tok-flag">--release</span> <span class="tok-flag">--locked</span> <span class="tok-flag">--bin</span> shape
+<span class="tok-cmd">export</span> PATH=<span class="tok-str">"$PWD/target/release:$PATH"</span>
+<span class="tok-cmd">mkdir</span> <span class="tok-flag">-p</span> reports
+<span class="tok-cmd">shape</span> <span class="tok-flag">--help</span></code></pre>
+        </div>
+        <p>Verify: <code>shape --help</code> prints the command list. Repeat the <code>export</code> in each new shell.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <h3>Prove the binary with the committed fixture</h3>
+        <p>This needs no capture and no network. It confirms that the CLI, artifact loader, and header decoder agree.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">shape</span> decode \
+  <span class="tok-flag">--artifact</span> sdk/c/tests/fixtures/artifact.json \
+  <span class="tok-flag">--headers</span> sdk/c/tests/fixtures/capture.json</code></pre>
+        </div>
+        <p>Expect <code>siteId: example</code>, <code>DeviceMemory.deviceMemory: 32</code>, <code>ConstantEmptyString.constant: ""</code>, and the two <code>StorageAccessApiPresence</code> booleans. If this fails, stop before tracing anything.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <h3>Trace the matching kernel</h3>
+        <p>Use the kernel and launcher from the same capture. The trace writes a linked JavaScript program and a JSON report.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">shape</span> trace program seeds/TOKEN.raw.js \
+  <span class="tok-flag">--thread-cleanup</span> <span class="tok-flag">--json</span> \
+  <span class="tok-flag">--out</span> reports/program.js \
+  <span class="tok-flag">--report-dir</span> reports/cache \
+  <span class="tok-flag">&gt;</span> reports/trace.json</code></pre>
+        </div>
+        <p>Verify: <code>status</code> is <code>complete</code>, <code>result.functions.stopped</code> is empty, and <code>result.javascript.incomplete</code> is <code>false</code>. A status 3 trace still writes a program, but stopped functions become throwing stubs.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">04</span>
+        <h3>Pin the launcher session</h3>
+        <p>The launcher is also the initializer. Pin the traced program and extract the session member for the next command.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">shape</span> pin <span class="tok-flag">--input</span> reports/program.js \
+  <span class="tok-flag">--init</span> seeds/TOKEN.async.js <span class="tok-flag">--out</span> reports/seed.json
+
+<span class="tok-cmd">python3</span> <span class="tok-flag">-c</span> <span class="tok-str">'import json; json.dump(json.load(open("reports/seed.json"))["session"], open("reports/session.json", "w"))'</span></code></pre>
+        </div>
+        <p>Verify: <code>reports/session.json</code> contains <code>transactionToken</code>, <code>alphabet</code>, <code>shuffleKey</code>, eight <code>keys</code>, and an optional <code>nonce</code>.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">05</span>
+        <h3>Compile and save the decode artifact</h3>
+        <p>This is the expensive step. It compiles the signal recipes once so later requests can skip source analysis.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--seed</span> reports/program.js <span class="tok-flag">--input-kind</span> program \
+  <span class="tok-flag">--headers</span> headers.json <span class="tok-flag">--session</span> reports/session.json \
+  <span class="tok-flag">--float-byte-order</span> little \
+  <span class="tok-flag">--save-artifact</span> reports/artifact.json \
+  <span class="tok-flag">--out</span> reports/decoded.json</code></pre>
+        </div>
+        <p>Verify: <code>reports/decoded.json</code> contains <code>positionalSignals</code>, and <code>reports/artifact.json</code> exists. Saving an artifact always verifies signal and header re-encoding.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">06</span>
+        <h3>Reuse the artifact for the next request</h3>
+        <p>Keep the same site, build, and session pairing. The artifact replaces the seed, session, and source files for decode.</p>
+        <div class="codeblock">
+          <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+          <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--artifact</span> reports/artifact.json \
+  <span class="tok-flag">--headers</span> next-headers.json \
+  <span class="tok-flag">--out</span> reports/decoded-next.json</code></pre>
+        </div>
+        <p>Verify: the output carries the expected named fields and the same <code>siteId</code>. If the site ID differs, recompile from that site's capture.</p>
+      </div>
+
+      <h2 id="environment">Environment and inputs</h2>
+      <p>Shape has one Rust engine and one CLI. The C ABI and four language bindings wrap the same engine. The CLI is enough to prepare and inspect an artifact; the SDK is for repeated calls inside an application.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tool</th><th>Needed for</th><th>Version or note</th></tr></thead>
+          <tbody>
+            <tr><td><code>Git</code></td><td>Clone and update the checkout</td><td>Any recent version</td></tr>
+            <tr><td><code>Rust</code></td><td>CLI, engine, Rust SDK</td><td>1.92 or newer, installed through rustup</td></tr>
+            <tr><td><code>Cargo</code></td><td>Release builds and tests</td><td>Ships with Rust</td></tr>
+            <tr><td><code>CMake</code></td><td>CLI build and tests through <code>aws-lc-sys</code></td><td>3.5 or newer; check with <code>cmake --version</code></td></tr>
+            <tr><td>C and C++ toolchain</td><td>Linking the CLI, AWS-LC, C ABI, and C++ smoke test</td><td><code>cc</code> and <code>c++</code> on <code>PATH</code>; Xcode CLT on macOS, <code>build-essential</code> on Linux</td></tr>
+            <tr><td><code>pkg-config</code></td><td>Optional system library discovery</td><td>Recommended; bundled builds work without it</td></tr>
+            <tr><td><code>Node.js</code></td><td>Node SDK, docs checks, Node addon</td><td>18 or newer</td></tr>
+            <tr><td><code>npm</code></td><td>Node dev dependencies and type checks</td><td>Ships with Node</td></tr>
+            <tr><td>Node-API headers</td><td>Node addon build</td><td>Official Node binaries include them; set <code>NODE_INCLUDE_DIR</code> if missing</td></tr>
+            <tr><td><code>Python</code></td><td>Python SDK and contract harness</td><td>3.9 or newer; <code>python3</code> on <code>PATH</code></td></tr>
+            <tr><td><code>Go</code></td><td>Go SDK</td><td>1.22 or newer with cgo and a C compiler</td></tr>
+            <tr><td><code>uv</code></td><td>Five-language contract harness</td><td>Python 3.10 or newer under uv</td></tr>
+            <tr><td><code>llvm-tools</code></td><td>Go static library preparation</td><td><code>rustup component add llvm-tools</code></td></tr>
+            <tr><td><code>NASM</code></td><td>Windows x86-64 CLI build</td><td>Required unless prebuilt NASM is enabled</td></tr>
+            <tr><td><code>Bash</code> and coreutils</td><td>SDK build and smoke scripts</td><td><code>bash</code>, <code>sh</code>, <code>cp</code>, <code>mkdir</code>, <code>mktemp</code>, <code>uname</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The first <code>cargo build --locked</code> and <code>npm ci</code> fetch dependencies. After that, only <code>shape seeds fetch</code> uses the network at runtime.</p>
+      <h3>Bootstrap a fresh machine</h3>
+      <p>Install the toolchain before the first build. The commands below are examples; use your platform's package manager or official installers, then confirm the versions at the end. Run <code>npm ci</code> from the repository root.</p>
+      <h4>macOS</h4>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">xcode-select</span> <span class="tok-flag">--install</span>
+<span class="tok-cmd">brew</span> install git cmake node python go uv
+<span class="tok-cmd">curl</span> <span class="tok-flag">--proto</span> <span class="tok-str">'=https'</span> <span class="tok-flag">--tlsv1.2</span> <span class="tok-flag">-sSf</span> https://sh.rustup.rs | <span class="tok-cmd">sh</span>
+<span class="tok-cmd">rustup</span> toolchain install stable
+<span class="tok-cmd">rustup</span> component add llvm-tools
+<span class="tok-cmd">npm</span> ci <span class="tok-flag">--prefix</span> sdk/node</code></pre>
+      </div>
+      <p>Homebrew is optional. Any install method works if CMake, Node 18+, Python 3.9+, Go 1.22+, and uv are on <code>PATH</code>.</p>
+      <h4>Debian or Ubuntu</h4>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">sudo</span> apt update
+<span class="tok-cmd">sudo</span> apt install <span class="tok-flag">-y</span> git curl build-essential cmake pkg-config
+<span class="tok-cmd">curl</span> <span class="tok-flag">--proto</span> <span class="tok-str">'=https'</span> <span class="tok-flag">--tlsv1.2</span> <span class="tok-flag">-sSf</span> https://sh.rustup.rs | <span class="tok-cmd">sh</span>
+<span class="tok-cmd">rustup</span> toolchain install stable
+<span class="tok-cmd">rustup</span> component add llvm-tools
+<span class="tok-com"># Install Node 18+, Go 1.22+, and uv with your</span>
+<span class="tok-com"># package manager or official installers.</span>
+<span class="tok-cmd">npm</span> ci <span class="tok-flag">--prefix</span> sdk/node</code></pre>
+      </div>
+      <p>On older distributions, check <code>node --version</code> and <code>go version</code>; use the official installers if the distro packages are too old.</p>
+      <h4>Windows CLI</h4>
+      <p>The CLI can build on Windows with the MSVC toolchain. The SDK helper scripts are POSIX-only; use WSL2 or a macOS/Linux host for the SDK path.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">powershell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-com"># Install Rust with the MSVC toolchain, Visual Studio Build Tools</span>
+<span class="tok-com"># ("Desktop development with C++"), CMake, and NASM.</span>
+<span class="tok-cmd">rustup</span> component add llvm-tools
+<span class="tok-cmd">cargo</span> build <span class="tok-flag">--release</span> <span class="tok-flag">--locked</span> <span class="tok-flag">--bin</span> shape
+<span class="tok-cmd">$env:PATH</span> = <span class="tok-str">"$PWD\target\release;$env:PATH"</span>
+<span class="tok-cmd">shape</span> <span class="tok-flag">--help</span></code></pre>
+      </div>
+      <p>Elsewhere in this runbook, <code>export PATH</code> and <code>python3</code> assume a POSIX shell. On Windows, use <code>$env:PATH</code> and <code>python</code>.</p>
+      <h4>Verify on macOS or Linux</h4>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">rustc</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">cargo</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">cmake</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">node</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">npm</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">python3</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">go</span> version
+<span class="tok-cmd">uv</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">cc</span> <span class="tok-flag">--version</span>
+<span class="tok-cmd">c++</span> <span class="tok-flag">--version</span></code></pre>
+      </div>
+      <h3>Inputs must belong to one capture</h3>
+      <p>The launcher, kernel, headers, and session are not interchangeable. Keep them together. Coordinates, handler keys, salts, and layouts belong to a particular build.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Input</th><th>Typical file</th><th>Comes from</th></tr></thead>
+          <tbody>
+            <tr><td>Launcher</td><td><code>seeds/TOKEN.async.js</code></td><td>Browser Network panel or <code>shape seeds fetch</code></td></tr>
+            <tr><td>Kernel</td><td><code>seeds/TOKEN.raw.js</code></td><td>The kernel URL inside that launcher</td></tr>
+            <tr><td>Headers</td><td><code>headers.json</code></td><td>The captured request headers, reduced to suffix keys</td></tr>
+            <tr><td>Session</td><td><code>session.json</code></td><td>The launcher's <code>detail.init(...)</code> call</td></tr>
+            <tr><td>Decode artifact</td><td><code>reports/artifact.json</code></td><td><code>shape decode --save-artifact</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">layout</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>seeds/
+  TOKEN.async.js    launcher: kernel URL, detail.init(...), boot code
+  TOKEN.raw.js      kernel: the VM source analysed by shape
+headers.json        {"siteId":"example","headers":{"a":"...","b":"..."}}
+reports/
+  program.js        linked traced program
+  trace.json        trace status and stopped-function report
+  session.json      parsed session
+  artifact.json     reusable decode artifact
+  decoded.json      named fields plus retained report context</code></pre>
+      </div>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Network boundary</span>
+          <p>Build-time fetches for Cargo and npm are separate. After the first build, <code>shape seeds fetch</code> is the only command that uses the network. Static analysis never executes captured JavaScript or WebAssembly. If you need the capture bytes, save them before analysis and keep the exact files.</p>
+        </div>
+      </div>
+
+      <h2 id="build-cli">Build the CLI</h2>
+      <p>The CLI is a single binary named <code>shape</code>. Build it from the repository root with the lockfile so the dependency set is the one this checkout was tested with. Rust 1.92+ plus CMake and a C/C++ toolchain are required: the HTTP stack builds <code>aws-lc-sys</code>, so a bare Rust install is not enough.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">cargo</span> build <span class="tok-flag">--release</span> <span class="tok-flag">--locked</span> <span class="tok-flag">--bin</span> shape
+<span class="tok-cmd">export</span> PATH=<span class="tok-str">"$PWD/target/release:$PATH"</span>
+<span class="tok-cmd">mkdir</span> <span class="tok-flag">-p</span> reports
+<span class="tok-cmd">shape</span> <span class="tok-flag">--help</span></code></pre>
+      </div>
+      <p>The first build resolves and downloads crates. Later builds reuse Cargo's cache. The binary lands at <code>target/release/shape</code>. The <code>reports/</code> directory is Git-ignored and is the expected home for local outputs.</p>
+      <h3>Build checks</h3>
+      <ul>
+        <li><code>shape --help</code> lists the command families.</li>
+        <li><code>shape &lt;command&gt; --help</code> shows the flags for that command. Do not assume a flag is shared across commands.</li>
+        <li><code>shape decode</code> against the committed fixture returns the expected three signals.</li>
+        <li>No existing output is overwritten unless the command supports and receives <code>--force</code>.</li>
+      </ul>
+      <div class="callout tip">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Release build</span>
+          <p>Use release mode for raw-seed recovery. Debug builds are much slower and can make a normal capture look like a hang.</p>
+        </div>
+      </div>
+      <h3>If the command is not found</h3>
+      <p>The repository binary is not on <code>PATH</code>. Re-run the <code>export</code> line from the repository root in the current shell, or call <code>./target/release/shape</code> directly. A stale installed binary is a different problem: source edits do not update an older installed build.</p>
+
+      <h2 id="build-sdk">Build the SDK</h2>
+      <p>The shared native build covers the C ABI, the Python and Node bindings, and the Go static library. It also builds the Node addon. Rust callers depend on the repository's root crate by path and do not need this step.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">rustup</span> component add llvm-tools
+<span class="tok-cmd">scripts/build-sdk.sh</span>
+<span class="tok-cmd">mkdir</span> <span class="tok-flag">-p</span> reports</code></pre>
+      </div>
+      <p>The script is restartable. Rerun it after a failure or after native source changes. It overwrites its own outputs and never stages or commits anything. Do not run it at the same time as another Cargo build that uses the same target directory.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Output</th><th>Consumer</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td><code>sdk/python/shape/lib/libshape.dylib</code></td><td>Python ctypes binding</td><td>Linux uses <code>libshape.so</code></td></tr>
+            <tr><td><code>sdk/node/lib/libshape.dylib</code></td><td>Node addon build</td><td>Linux uses <code>libshape.so</code></td></tr>
+            <tr><td><code>sdk/go/lib/libshape.a</code></td><td>Go cgo binding</td><td>LLVM bitcode is stripped</td></tr>
+            <tr><td><code>sdk/node/build/shape.node</code></td><td>Node addon</td><td>Must match the host architecture</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The script supports macOS and Linux. It requires Rust 1.92+, CMake, a C/C++ toolchain, Node with Node-API headers, and <code>rust-objcopy</code> from <code>llvm-tools</code>. If the platform is not macOS or Linux, the script exits with an explicit error.</p>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">One link at a time</span>
+          <p>A machine can only take one release link at a time. Wait for the SDK build to finish before starting another release build in the same target directory.</p>
+        </div>
+      </div>
+      <h3>After native changes</h3>
+      <p>Rebuild the installed bindings. A stale installed library does not acquire new operations from source edits. For Node-only work, <code>sdk/node/build.sh</code> rebuilds the addon, but it still needs the matching <code>libshape</code> beside it.</p>
+
+      <h2 id="acquire-capture">Acquire a matching capture</h2>
+      <p>Start with a launcher and kernel from one build. The registry exists so you do not reconstruct provider URLs by hand. Inspect the registry first, then fetch a validated entry.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> seeds sites
+<span class="tok-cmd">shape</span> seeds fetch <span class="tok-flag">--site</span> NAME <span class="tok-flag">--out</span> seeds
+<span class="tok-cmd">shape</span> seeds parse seeds/TOKEN.async.js <span class="tok-flag">--base-url</span> <span class="tok-str">'https://assets.example.test/launcher.js?async'</span></code></pre>
+      </div>
+      <p><code>fetch</code> writes two sibling files named after the capture token: <code>TOKEN.async.js</code> and <code>TOKEN.raw.js</code>. A direct-kernel entry point writes only <code>TOKEN.raw.js</code> and needs <code>--seed</code> on import. <code>parse</code> writes nothing and makes no request; it reports the token and resolved kernel URL.</p>
+      <h3>Import files you already saved</h3>
+      <p>Use <code>import</code> when a teammate sent you the launcher and kernel, or when you saved them from the browser Network panel. The launcher supplies the capture identity.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> seeds import downloads/abc123.raw.js \
+  <span class="tok-flag">--launcher</span> downloads/abc123.async.js \
+  <span class="tok-flag">--out</span> seeds/imported
+
+<span class="tok-cmd">shape</span> seeds import downloads/abc123.raw.js \
+  <span class="tok-flag">--seed</span> abc123 <span class="tok-flag">--out</span> seeds/imported</code></pre>
+      </div>
+      <p>Pass exactly one of <code>--launcher</code> or <code>--seed</code>. Supplying neither or both is a usage error. Import validates that the kernel classifies as a raw kernel before writing, and it does not authenticate that the two files belong together.</p>
+      <h3>Headers and session</h3>
+      <p>Shape does not produce headers. Capture them from the same browser request and reduce them to suffix keys with a site label:</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">json</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>{
+  <span class="tok-str">"siteId"</span>: <span class="tok-str">"example-site"</span>,
+  <span class="tok-str">"headers"</span>: {
+    <span class="tok-str">"a"</span>: <span class="tok-str">"ZCcDA5M-Wp6u..."</span>,
+    <span class="tok-str">"a0"</span>: <span class="tok-str">"_kDqP0McfRa..."</span>,
+    <span class="tok-str">"b"</span>: <span class="tok-str">"-upu45s"</span>,
+    <span class="tok-str">"c"</span>: <span class="tok-str">"AIAS-MKh..."</span>,
+    <span class="tok-str">"d"</span>: <span class="tok-str">"ADYAhICB..."</span>,
+    <span class="tok-str">"f"</span>: <span class="tok-str">"A71QDMOh..."</span>,
+    <span class="tok-str">"z"</span>: <span class="tok-str">"q"</span>
+  }
+}</code></pre>
+      </div>
+      <p>The real HTTP names are the capture prefix plus the suffix, commonly <code>x-...-a</code>, <code>x-...-a0</code>, and so on. The artifact supplies the prefix. <code>siteId</code> is a label, not an HTTP header, and it must match the artifact.</p>
+      <p>The launcher's <code>detail.init(...)</code> call carries the session. Pin the launcher once and extract the <code>session</code> member, or pass the whole launcher to <code>shape pin --init</code>. No separate init extraction is required.</p>
+      <div class="callout note">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Matching set</span>
+          <p>Keep the artifact with its matching site, build, and session. A token from one capture with keys from another is not a merge problem; it is an invalid input.</p>
+        </div>
+      </div>
+
+      <h2 id="trace-program">Trace the program</h2>
+      <p><code>trace program</code> walks every reachable VM thread and links the result into one JavaScript file. This is the step that turns a minified kernel into a program the signal finders can read.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> trace program seeds/TOKEN.raw.js \
+  <span class="tok-flag">--thread-cleanup</span> <span class="tok-flag">--json</span> \
+  <span class="tok-flag">--out</span> reports/program.js \
+  <span class="tok-flag">--report-dir</span> reports/cache \
+  <span class="tok-flag">&gt;</span> reports/trace.json</code></pre>
+      </div>
+      <p>The command writes the linked program to <code>--out</code> and the structured report to stdout, which the shell redirects to <code>reports/trace.json</code>. Summaries go to stderr. The fixture trace recovers 602 functions and takes a few seconds.</p>
+      <h3>Check completion before using the program</h3>
+      <p>Read the report. Do not treat the existence of <code>program.js</code> as proof that every reachable function completed.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">json</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>{
+  <span class="tok-str">"status"</span>: <span class="tok-str">"complete"</span>,
+  <span class="tok-str">"result"</span>: {
+    <span class="tok-str">"functions"</span>: { <span class="tok-str">"stopped"</span>: [] },
+    <span class="tok-str">"javascript"</span>: { <span class="tok-str">"incomplete"</span>: false }
+  }
+}</code></pre>
+      </div>
+      <ul>
+        <li><code>status: complete</code> is the only status that authorizes the rest of the fast path.</li>
+        <li><code>result.functions.stopped</code> must be empty.</li>
+        <li><code>result.javascript.incomplete</code> must be <code>false</code>.</li>
+        <li>A status 3 trace still writes a program. Stopped functions become throwing stubs that name their stop.</li>
+      </ul>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Partial trace</span>
+          <p>A partial trace is useful for diagnosis, not for a release artifact. Inspect <code>result.functions.stopped</code>, raise <code>--steps</code>, retry without <code>--thread-cleanup</code>, or use branch overrides before you compile recipes.</p>
+        </div>
+      </div>
+      <h3>Trace one function instead</h3>
+      <p>Use <code>trace thread</code> when you know the entry coordinates and want to inspect one walk. The entry <code>pc</code>, <code>state</code>, and initial slots come from <code>shape kernel show</code>.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> trace thread tests/fixtures/kernels/javascript/kernel.raw.js \
+  <span class="tok-flag">--pc</span> 0 <span class="tok-flag">--state</span> 0 <span class="tok-flag">--initialslots</span> 2,0,3,1 \
+  <span class="tok-flag">--out</span> reports/thread.js
+
+<span class="tok-cmd">shape</span> trace cleanup-thread reports/thread.js <span class="tok-flag">--out</span> reports/thread-clean.js</code></pre>
+      </div>
+      <p><code>trace thread</code> returns 0 for a complete walk, 3 for a stop, 4 for an undeclared generated name, 5 for a self-check difference, and 1 or 2 for errors. Use <code>--partial</code> only when you want diagnostic output from a stopped prefix; program and corpus mode never emit incomplete traces that way.</p>
+      <h3>Reuse the kernel cache, not the trace</h3>
+      <p><code>--report-dir</code> caches compiled kernel artifacts. A cache hit skips kernel compilation on a later trace. It does not skip tracing, and it does not make a previous trace result valid for a different entry or capture. Use <code>--steps</code> to bound each function walk when a capture is large.</p>
+      <p>For branch decisions, pass a JSON array of real branches with <code>--not-fake-branches</code>, or a JSON object of forced branches with <code>--fake-branches</code>. A position may not appear in both files. Without either option, the walk is unchanged.</p>
+
+      <h2 id="compile-artifact">Compile the artifact</h2>
+      <p>A decode artifact holds the layout, cipher settings, session defaults, and executable signal recipes. Compile it once per matching site, build, and session. After that, decode does no source analysis.</p>
+      <h3>Pin the traced program and session</h3>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> pin <span class="tok-flag">--input</span> reports/program.js \
+  <span class="tok-flag">--init</span> seeds/TOKEN.async.js <span class="tok-flag">--out</span> reports/seed.json
+
+<span class="tok-cmd">python3</span> <span class="tok-flag">-c</span> <span class="tok-str">'import json; json.dump(json.load(open("reports/seed.json"))["session"], open("reports/session.json", "w"))'</span></code></pre>
+      </div>
+      <p>The pinned layout is a <code>shape-seed-layout/1</code> document. Its <code>session</code> member is the parsed session. The session must belong to the same launcher, kernel, and headers. When you supply a replacement session, pass its complete token and cipher material; individual fields are not merged with the previous session.</p>
+      <h3>Compile and decode in one pass</h3>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--seed</span> reports/program.js <span class="tok-flag">--input-kind</span> program \
+  <span class="tok-flag">--headers</span> headers.json <span class="tok-flag">--session</span> reports/session.json \
+  <span class="tok-flag">--float-byte-order</span> little \
+  <span class="tok-flag">--save-artifact</span> reports/artifact.json \
+  <span class="tok-flag">--out</span> reports/decoded.json</code></pre>
+      </div>
+      <p><code>--float-byte-order</code> records how the collecting browser wrote native floats. It is required when the seed emits them and is saved in the artifact. <code>little</code> and <code>big</code> are the only values. Guessing produces decode failures rather than wrong values.</p>
+      <div class="callout note">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">What was saved</span>
+          <p><code>reports/decoded.json</code> contains named <code>positionalSignals</code> plus the retained report context. <code>reports/artifact.json</code> contains the reusable recipes. They are different documents and neither replaces the other.</p>
+        </div>
+      </div>
+      <h3>Explicit direct mode</h3>
+      <p>Use <code>--direct</code> only when you need explicit source-format analysis without lifecycle certification. It is opt-in, defaults the seed to a traced program, and defaults the float byte order to little. It does not certify strict consumer support.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--direct</span> <span class="tok-flag">--seed</span> reports/program.js \
+  <span class="tok-flag">--session</span> reports/session.json <span class="tok-flag">--headers</span> headers.json \
+  <span class="tok-flag">--float-byte-order</span> little <span class="tok-flag">--verify</span> \
+  <span class="tok-flag">--save-artifact</span> reports/direct-artifact.json \
+  <span class="tok-flag">--out</span> reports/decoded-direct.json</code></pre>
+      </div>
+      <p>Direct provenance persists in the artifact. A later <code>--artifact</code> load uses the recorded mode automatically. <code>--direct</code> requires <code>--seed</code> and conflicts with <code>--artifact</code> and <code>--schema-only</code>. It cannot reinterpret a saved strict artifact.</p>
+      <h3>Schema only</h3>
+      <p>If you need the static schema without a session or capture, export it without decoding:</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--schema-only</span> <span class="tok-flag">--seed</span> reports/program.js \
+  <span class="tok-flag">--input-kind</span> program <span class="tok-flag">--schema-out</span> reports/schema.json</code></pre>
+      </div>
+      <p>The compact schema describes signals. It cannot decode and it is not a substitute for <code>--save-artifact</code>.</p>
+
+      <h2 id="edit-encode">Decode, edit, encode</h2>
+      <p>The CLI decodes named fields. The SDK also encodes edited fields back into headers. Keep the full decoded payload when you edit; saving only the named map deliberately constructs a new payload with fresh prefixes and layout defaults.</p>
+      <h3>Decode with a saved artifact</h3>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">shape</span> decode <span class="tok-flag">--artifact</span> reports/artifact.json \
+  <span class="tok-flag">--headers</span> next-headers.json \
+  <span class="tok-flag">--out</span> reports/decoded-next.json</code></pre>
+      </div>
+      <p>The committed sample pair produces this trimmed result. The full document also carries report channels, seeds, and metadata.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">json</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>{
+  <span class="tok-str">"siteId"</span>: <span class="tok-str">"example"</span>,
+  <span class="tok-str">"positionalSignals"</span>: {
+    <span class="tok-str">"ConstantEmptyString"</span>: { <span class="tok-str">"constant"</span>: <span class="tok-str">""</span> },
+    <span class="tok-str">"DeviceMemory"</span>: { <span class="tok-str">"deviceMemory"</span>: 32 },
+    <span class="tok-str">"StorageAccessApiPresence"</span>: {
+      <span class="tok-str">"hasStorageAccess"</span>: true,
+      <span class="tok-str">"requestStorageAccess"</span>: false
+    }
+  }
+}</code></pre>
+      </div>
+      <p>Add <code>--verify</code> when you want an ordinary decode to require byte-identical re-encoding. <code>--save-artifact</code> always performs that verification. Successful decoding does not mean every edit can be encoded; the compiled wire recipes must support the requested value.</p>
+      <h3>Edit and re-encode in an SDK</h3>
+      <p>Load the artifact once, keep it outside the request loop, and pass the whole decoded object to encode. The examples change <code>DeviceMemory.deviceMemory</code> from 32 to 16 and write rebuilt headers.</p>
+      <div class="tabs">
+        <div class="tab-list" role="tablist" aria-label="SDK examples">
+          <button class="tab-btn" id="tab-node" type="button" role="tab" aria-selected="true" aria-controls="panel-node">Node.js</button>
+          <button class="tab-btn" id="tab-python" type="button" role="tab" aria-selected="false" aria-controls="panel-python" tabindex="-1">Python</button>
+          <button class="tab-btn" id="tab-go" type="button" role="tab" aria-selected="false" aria-controls="panel-go" tabindex="-1">Go</button>
+          <button class="tab-btn" id="tab-rust" type="button" role="tab" aria-selected="false" aria-controls="panel-rust" tabindex="-1">Rust</button>
+        </div>
+        <div class="tab-panel" id="panel-node" role="tabpanel" aria-labelledby="tab-node">
+          <div class="codeblock">
+            <div class="code-head"><span class="code-lang">javascript</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-cmd">import</span> { readFileSync, writeFileSync } <span class="tok-cmd">from</span> <span class="tok-str">'node:fs'</span>;
+<span class="tok-cmd">import</span> { Generator, stringifyJSON } <span class="tok-cmd">from</span> <span class="tok-str">'./sdk/node/index.mjs'</span>;
+
+<span class="tok-cmd">const</span> generator = <span class="tok-cmd">await</span> Generator.loadAsync(
+  readFileSync(<span class="tok-str">'reports/artifact.json'</span>),
+);
+<span class="tok-cmd">try</span> {
+  <span class="tok-cmd">const</span> decoded = <span class="tok-cmd">await</span> generator.decodeAsync(
+    readFileSync(<span class="tok-str">'next-headers.json'</span>),
+  );
+  <span class="tok-cmd">const</span> memory = decoded.positionalSignals.DeviceMemory;
+  <span class="tok-cmd">if</span> (!memory || <span class="tok-cmd">typeof</span> memory.deviceMemory !== <span class="tok-str">'number'</span>) {
+    <span class="tok-cmd">throw new</span> Error(<span class="tok-str">'Capture has no numeric DeviceMemory field'</span>);
+  }
+  memory.deviceMemory = 16;
+  <span class="tok-cmd">const</span> encoded = <span class="tok-cmd">await</span> generator.encodeAsync({ decoded });
+  <span class="tok-cmd">const</span> json = stringifyJSON(encoded);
+  <span class="tok-cmd">if</span> (json === undefined) <span class="tok-cmd">throw new</span> Error(<span class="tok-str">'Capture could not be serialized'</span>);
+  writeFileSync(<span class="tok-str">'reports/node-headers.json'</span>, json);
+} <span class="tok-cmd">finally</span> {
+  generator.close();
+}</code></pre>
+          </div>
+        </div>
+        <div class="tab-panel" id="panel-python" role="tabpanel" aria-labelledby="tab-python" hidden>
+          <div class="codeblock">
+            <div class="code-head"><span class="code-lang">python</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-cmd">import</span> json
+<span class="tok-cmd">from</span> pathlib <span class="tok-cmd">import</span> Path
+<span class="tok-cmd">import</span> shape
+
+artifact = Path(<span class="tok-str">"reports/artifact.json"</span>)
+headers = Path(<span class="tok-str">"next-headers.json"</span>).read_bytes()
+<span class="tok-cmd">with</span> shape.Generator.load(artifact) <span class="tok-cmd">as</span> generator:
+    decoded = generator.decode(headers)
+    decoded[<span class="tok-str">"positionalSignals"</span>][<span class="tok-str">"DeviceMemory"</span>][<span class="tok-str">"deviceMemory"</span>] = 16
+    encoded = generator.encode(decoded=decoded)
+    Path(<span class="tok-str">"reports/python-headers.json"</span>).write_text(
+        json.dumps(encoded), encoding=<span class="tok-str">"utf-8"</span>
+    )</code></pre>
+          </div>
+        </div>
+        <div class="tab-panel" id="panel-go" role="tabpanel" aria-labelledby="tab-go" hidden>
+          <div class="codeblock">
+            <div class="code-head"><span class="code-lang">go</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-cmd">package</span> demo
+
+<span class="tok-cmd">import</span> (
+    <span class="tok-str">"encoding/json"</span>
+    <span class="tok-str">"fmt"</span>
+    <span class="tok-str">"shape"</span>
+)
+
+<span class="tok-cmd">func</span> EditCapture(artifact, headers []<span class="tok-cmd">byte</span>) (*shape.Capture, <span class="tok-cmd">error</span>) {
+    generator, err := shape.Load(artifact)
+    <span class="tok-cmd">if</span> err != <span class="tok-cmd">nil</span> { <span class="tok-cmd">return nil</span>, err }
+    <span class="tok-cmd">defer</span> generator.Close()
+
+    decoded, err := generator.Decode(headers, shape.DecodeOptions{})
+    <span class="tok-cmd">if</span> err != <span class="tok-cmd">nil</span> { <span class="tok-cmd">return nil</span>, err }
+    fmt.Println(decoded.PositionalSignals)
+    memory, ok := decoded.PositionalSignals[<span class="tok-str">"DeviceMemory"</span>]
+    <span class="tok-cmd">if</span> !ok { <span class="tok-cmd">return nil</span>, fmt.Errorf(<span class="tok-str">"capture has no DeviceMemory signal"</span>) }
+    memory[<span class="tok-str">"deviceMemory"</span>] = json.Number(<span class="tok-str">"16"</span>)
+    <span class="tok-cmd">return</span> generator.Encode(shape.EncodeRequest{Decoded: decoded})
+}</code></pre>
+          </div>
+        </div>
+        <div class="tab-panel" id="panel-rust" role="tabpanel" aria-labelledby="tab-rust" hidden>
+          <div class="codeblock">
+            <div class="code-head"><span class="code-lang">rust</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+            <pre><code><span class="tok-cmd">use</span> shape::Generator;
+
+<span class="tok-cmd">fn</span> main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    <span class="tok-cmd">let</span> generator = Generator::load(&amp;std::fs::read(<span class="tok-str">"reports/artifact.json"</span>)?)?;
+    <span class="tok-cmd">let</span> capture: shape::signals::decode::CaptureHeaders =
+        serde_json::from_slice(&amp;std::fs::read(<span class="tok-str">"next-headers.json"</span>)?)?;
+    <span class="tok-cmd">let mut</span> decoded = generator.decode(&amp;capture, <span class="tok-cmd">None</span>, Default::default())?;
+    <span class="tok-cmd">let</span> memory = decoded.positional_signals.get_mut(<span class="tok-str">"DeviceMemory"</span>)
+        .ok_or(<span class="tok-str">"capture has no DeviceMemory signal"</span>)?;
+    memory[<span class="tok-str">"deviceMemory"</span>] = serde_json::json!(16);
+    <span class="tok-cmd">let</span> headers = generator.encode(&amp;serde_json::to_value(&amp;decoded)?, <span class="tok-cmd">None</span>)?;
+    println!(<span class="tok-str">"{} {}"</span>, headers.site_id, headers.headers.iter().count());
+    Ok(())
+}</code></pre>
+          </div>
+        </div>
+      </div>
+      <p>C callers link <code>libshape</code> and exchange JSON text with explicit ownership. The C guide has the complete request and handle lifecycle. Rust callers depend on the repository's root crate by path and do not need the C ABI build.</p>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Keep the whole payload</span>
+          <p>Encode the whole decoded object, not just <code>positionalSignals</code>. The retained report carries raw signal bytes, other channels, seeds, keysets, header context, and per-signal prefixes. Encoding the named map alone constructs a fresh payload.</p>
+        </div>
+      </div>
+      <p>Encoding an unchanged full payload with a matching artifact and session reproduces all six captured header values exactly. An edit retains unedited signals where the codec supports it, but shared framing and encryption can change header bytes beyond the edited field. An edit is not a promise of unchanged ciphertext elsewhere.</p>
+      <p>Unsupported edits are refused. Inspect the signal with <code>explain</code>, check its supported shape and literal or count constraints, and keep the full decoded object. For a new session, pass the complete replacement to decode, explain, and encode; a session override replaces the whole session.</p>
+
+      <h2 id="verification">Verification gate</h2>
+      <p>Do not call the work complete because a command printed JSON. The release gate is a set of observed results. Run every check that matches the surface you changed, and record the command output in the change or incident note.</p>
+      <ul class="checklist">
+        <li><input id="check-build" type="checkbox"><label for="check-build">The release CLI builds from the repository root with <code>--locked</code>.</label></li>
+        <li><input id="check-fixture" type="checkbox"><label for="check-fixture">The committed sample artifact decodes to the expected three signals.</label></li>
+        <li><input id="check-trace" type="checkbox"><label for="check-trace">The trace report has <code>status: complete</code> and an empty stopped list.</label></li>
+        <li><input id="check-artifact" type="checkbox"><label for="check-artifact">The artifact and decoded output are saved under <code>reports/</code> with distinct names.</label></li>
+        <li><input id="check-reuse" type="checkbox"><label for="check-reuse">A second decode using only the artifact succeeds with the same site ID.</label></li>
+        <li><input id="check-edit" type="checkbox"><label for="check-edit">An edited named field re-encodes and decodes back to the requested value.</label></li>
+        <li><input id="check-tests" type="checkbox"><label for="check-tests">The relevant Rust, SDK, and docs checks pass on the current checkout.</label></li>
+        <li><input id="check-rollback" type="checkbox"><label for="check-rollback">The previous artifact and capture are still available for rollback.</label></li>
+      </ul>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-com"># CLI fixture and full test suite</span>
+<span class="tok-cmd">shape</span> decode <span class="tok-flag">--artifact</span> sdk/c/tests/fixtures/artifact.json \
+  <span class="tok-flag">--headers</span> sdk/c/tests/fixtures/capture.json
+<span class="tok-cmd">cargo</span> test
+
+<span class="tok-com"># Documentation and signal data checks</span>
+<span class="tok-cmd">node</span> <span class="tok-flag">--test</span> scripts/docs-links.test.mjs
+<span class="tok-cmd">node</span> scripts/docs-links.mjs
+<span class="tok-cmd">node</span> scripts/signal-data.test.mjs
+
+<span class="tok-com"># SDK checks after scripts/build-sdk.sh</span>
+<span class="tok-cmd">npm</span> <span class="tok-flag">--prefix</span> sdk/node test
+<span class="tok-cmd">uv</span> run <span class="tok-flag">--no-project</span> python sdk/tests/contract.py</code></pre>
+      </div>
+      <p>The five-language contract harness requires matching native code and bindings. It fails when a runtime or compiler is missing; it does not silently omit a language. Run it after <code>scripts/build-sdk.sh</code>, not against an older installed library.</p>
+      <h3>Python runtime checks</h3>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>SHAPE_LIBRARY=<span class="tok-str">"$PWD/sdk/python/shape/lib/libshape.dylib"</span> \
+SHAPE_TEST_ARTIFACT=<span class="tok-str">"$PWD/sdk/c/tests/fixtures/artifact.json"</span> \
+SHAPE_TEST_HEADERS=<span class="tok-str">"$PWD/sdk/c/tests/fixtures/capture.json"</span> \
+uv run <span class="tok-flag">--no-project</span> python <span class="tok-flag">-m</span> unittest discover <span class="tok-flag">-s</span> sdk/python/tests</code></pre>
+      </div>
+      <p>Use <code>libshape.so</code> on Linux. The <code>SHAPE_LIBRARY</code> path must point at the current optimized library, not a stale build. Pure boundary and lifetime checks can run without a native library by selecting their test classes.</p>
+      <h3>What counts as evidence</h3>
+      <p>A complete trace, a saved artifact, and a successful decode are separate facts. Keep the command, the exit status, and the output path for each. A screenshot of a JSON blob is not enough to prove that the artifact was built from the same capture.</p>
+
+      <h2 id="test-matrix">Test matrix</h2>
+      <p>Choose the smallest check that covers the change, then run the release gate before handoff. The full suite is slow; focused targets are for local iteration.</p>
+      <div class="callout note">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Node test dependencies</span>
+          <p>Before the first <code>test:types</code> or contract harness run, install the locked Node dev dependencies with <code>npm ci --prefix sdk/node</code>. The runtime Node SDK itself has no npm dependencies.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Change</th><th>Command</th><th>What it proves</th></tr></thead>
+          <tbody>
+            <tr><td>CLI or engine</td><td><code>cargo test</code></td><td>Rust unit and integration targets pass</td></tr>
+            <tr><td>Generator or codec</td><td><code>cargo test --test generator_codec</code></td><td>Wire, header, and round-trip contracts</td></tr>
+            <tr><td>Decode workflow</td><td><code>cargo test --release --test decode_workflow</code></td><td>Synthetic source and golden byte round trips</td></tr>
+            <tr><td>Naming</td><td><code>cargo test --test naming_joined_observables</code></td><td>Semantic naming and refusal controls</td></tr>
+            <tr><td>Docs links</td><td><code>node --test scripts/docs-links.test.mjs</code> and <code>node scripts/docs-links.mjs</code></td><td>Links and docs data stay valid</td></tr>
+            <tr><td>Signal data</td><td><code>node scripts/signal-data.test.mjs</code></td><td>Catalog and rendered signal data agree</td></tr>
+            <tr><td>Node SDK</td><td><code>npm --prefix sdk/node test</code></td><td>Legacy and v2 operation suites pass</td></tr>
+            <tr><td>Node types and docs</td><td><code>npm --prefix sdk/node run test:types</code> and <code>test:docs</code></td><td>Strict TypeScript and README blocks compile</td></tr>
+            <tr><td>Python SDK</td><td>Unittest command with <code>SHAPE_LIBRARY</code></td><td>Runtime operations, precision, and lifetimes</td></tr>
+            <tr><td>Go SDK</td><td><code>go test -race ./...</code></td><td>cgo binding and race checks</td></tr>
+            <tr><td>C SDK</td><td><code>sdk/c/tests/run-smoke.sh "$PWD/target/release"</code></td><td>C ABI smoke path against the release build</td></tr>
+            <tr><td>All SDKs</td><td><code>uv run --no-project python sdk/tests/contract.py</code></td><td>Cross-language operation and precision contract</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Private corpus checks are ignored by default. Read their ignore reason before enabling them; they need external inputs such as <code>SHAPE_FROZEN_ROOT</code>. Do not regenerate golden fixtures during a documentation-only change.</p>
+
+      <h2 id="troubleshooting">Troubleshooting</h2>
+      <p>Start with the command's <code>--help</code> and the error message. Then check which binary or native library is actually running. Source edits do not update an older installed build.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td><code>shape: command not found</code></td><td>The repository binary is not on <code>PATH</code></td><td>Re-run <code>export PATH="$PWD/target/release:$PATH"</code></td></tr>
+            <tr><td><code>cmake: command not found</code> or an <code>aws-lc-sys</code> build failure</td><td>CMake or the C/C++ toolchain is missing</td><td>Install the tools from <a href="#environment">Bootstrap a fresh machine</a>; confirm <code>cmake --version</code></td></tr>
+            <tr><td><code>node_api.h not found</code></td><td>Node-API headers are not beside the Node binary</td><td>Install official Node, or set <code>NODE_INCLUDE_DIR</code> to the directory containing <code>node_api.h</code></td></tr>
+            <tr><td><code>tsc: not found</code></td><td>Node dev dependencies are not installed</td><td>Run <code>npm ci --prefix sdk/node</code></td></tr>
+            <tr><td><code>otool not found</code></td><td>Xcode Command Line Tools are missing</td><td>Run <code>xcode-select --install</code></td></tr>
+            <tr><td><code>rust-objcopy not found</code></td><td>The <code>llvm-tools</code> component is missing</td><td>Run <code>rustup component add llvm-tools</code></td></tr>
+            <tr><td>Exit status 3, empty <code>result.javascript</code></td><td>Tracing stopped before a partial program</td><td>Inspect <code>result.functions.stopped</code>; raise <code>--steps</code>, retry without <code>--thread-cleanup</code>, or use branch overrides</td></tr>
+            <tr><td><code>capture/artifact siteId mismatch</code></td><td>Headers and artifact come from different sites</td><td>Use the artifact for that site, or recompile with the capture's <code>siteId</code></td></tr>
+            <tr><td><code>native float byte order must be explicitly configured</code></td><td>The seed emits native floats and the artifact has no byte order</td><td>Re-run <code>decode --seed</code> or <code>artifact.compile</code> with <code>--float-byte-order little|big</code></td></tr>
+            <tr><td><code>reconstructed report differs</code> under <code>--verify</code></td><td>Artifact, session, and headers do not describe one capture</td><td>Re-extract the matching session and recompile the artifact</td></tr>
+            <tr><td><code>unsupported decode artifact format</code></td><td>A compact schema or kernel artifact was passed as a decode artifact</td><td>Pass the <code>--save-artifact</code> or <code>artifact.compile</code> output</td></tr>
+            <tr><td><code>an existing output file</code></td><td>Commands refuse to overwrite by default</td><td>Choose a new output path, or add <code>--force</code> where supported</td></tr>
+            <tr><td><code>too many open files</code> during a large trace</td><td>Many concurrent walks</td><td>Raise the shell file limit; SDK callers can lower the tracing <code>jobs</code> option</td></tr>
+            <tr><td>Python <code>library_not_found</code></td><td><code>libshape</code> is not installed or discoverable</td><td>Run <code>scripts/build-sdk.sh</code>, or set <code>SHAPE_LIBRARY</code> to the absolute library path</td></tr>
+            <tr><td>Node cannot load <code>shape.node</code></td><td>Addon not built, wrong architecture, or missing library beside it</td><td>Re-run <code>sdk/node/build.sh</code>; confirm <code>libshape</code> is in <code>sdk/node/build/</code>; check <code>process.arch</code></td></tr>
+            <tr><td>Go <code>disallowed LTO section __LLVM,__bitcode</code></td><td>The static library still contains LLVM bitcode</td><td>Run <code>scripts/build-sdk.sh</code>, or strip it with the Go guide's steps</td></tr>
+            <tr><td>C link error <code>mis-aligned LINKEDIT string pool</code></td><td>A stripped Rust dylib was linked</td><td>Rebuild with <code>scripts/build-sdk.sh</code>; see the C guide</td></tr>
+            <tr><td><code>artifact.json</code> decodes but edits fail</td><td>The requested edit has no supported encoding</td><td>Check <code>describe</code> or <code>explain</code> for the signal; unsupported leaves cannot be synthesized</td></tr>
+            <tr><td>Large integers change value</td><td>A JSON layer parsed them as doubles</td><td>Keep documents as text, or use the language's exact-integer path</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Trace stop triage</h3>
+      <p>Read the stop reason before changing flags. The same exit code can mean a budget limit, an unsupported handler, or malformed input.</p>
+      <ul>
+        <li><code>dispatch step budget reached</code>: raise <code>--steps</code> or accept a partial result.</li>
+        <li><code>state N has no proven table row</code>: the capture's table does not cover this dispatch. It is not a supported kernel on this path.</li>
+        <li><code>selector N is unsupported</code>: the handler exists, but no recipe admits it. This is a coverage gap, not malformed input.</li>
+        <li><code>dispatch PC ... is outside the ... image</code>: malformed bytes, or an entry or slot declaration that does not match the image.</li>
+        <li><code>branches cannot join at pc ... state ...</code>: the two sides met with VM state the tracer cannot merge.</li>
+        <li><code>dispatch revisited pc ... state ... without progress</code>: a loop the walk did not recognize.</li>
+      </ul>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Do not retry blindly</span>
+          <p>Changing a flag without reading the stop reason can hide the problem. If the failure looks like an internal panic, record the operation, CLI or native version, options, error code, and a minimal reproduction. The SDK returns a <code>panic</code> error code instead of crashing your process.</p>
+        </div>
+      </div>
+
+      <h2 id="rollback">Rollback</h2>
+      <p>Rollback here means returning to a known matching set, not undoing unrelated work. Captures and artifacts are expensive to recreate. Preserve them.</p>
+      <div class="callout warn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 2.8 20h18.4L12 3Z"/><path d="M12 9v5M12 17h.01"/></svg>
+        <div class="callout-body">
+          <span class="callout-label">Never destroy evidence</span>
+          <p>Do not run <code>git reset --hard</code>, <code>git clean</code>, or delete a capture to fix a decode failure. Rename the bad output, keep the previous artifact, and rebuild from the matching launcher, kernel, session, and headers.</p>
+        </div>
+      </div>
+      <h3>Quarantine a bad artifact</h3>
+      <p>Move the suspect artifact aside. Do not overwrite the only copy. Then recompile from the preserved inputs with a new output name.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">shell</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code><span class="tok-cmd">mv</span> reports/artifact.json reports/artifact.bad.json
+<span class="tok-cmd">shape</span> decode <span class="tok-flag">--seed</span> reports/program.js <span class="tok-flag">--input-kind</span> program \
+  <span class="tok-flag">--headers</span> headers.json <span class="tok-flag">--session</span> reports/session.json \
+  <span class="tok-flag">--float-byte-order</span> little \
+  <span class="tok-flag">--save-artifact</span> reports/artifact.rebuilt.json \
+  <span class="tok-flag">--out</span> reports/decoded.rebuilt.json</code></pre>
+      </div>
+      <p>If the rebuilt artifact decodes the same capture correctly, switch consumers to the new path. Keep the bad artifact until the incident note is closed; it is evidence of what failed.</p>
+      <h3>Roll back a native build</h3>
+      <p>A stale or mismatched native library can make a working source tree look broken. Re-run <code>scripts/build-sdk.sh</code> against the current checkout, then rerun the contract harness. If you need the previous library, restore it from your release artifact store rather than copying a random build from another machine.</p>
+      <h3>Roll back a program or trace</h3>
+      <p>Keep the last complete <code>program.js</code> and its <code>trace.json</code>. If a new trace is partial, do not compile recipes from it. Restore the previous complete pair, confirm the status fields, and use the matching artifact for that build. Re-trace only when you have the matching kernel and a reason to believe the stop is resolved.</p>
+      <h3>Rollback checklist</h3>
+      <ul class="checklist">
+        <li><input id="rollback-preserve" type="checkbox"><label for="rollback-preserve">The previous artifact and decoded output are preserved under a new name.</label></li>
+        <li><input id="rollback-inputs" type="checkbox"><label for="rollback-inputs">The launcher, kernel, headers, and session still belong to one capture.</label></li>
+        <li><input id="rollback-trace" type="checkbox"><label for="rollback-trace">The restored program has a complete trace report.</label></li>
+        <li><input id="rollback-verify" type="checkbox"><label for="rollback-verify">A decode with the restored artifact returns the expected fields.</label></li>
+      </ul>
+
+      <h2 id="exit-codes">Exit codes</h2>
+      <p>Exit status is part of the contract. A nonzero status can still leave useful output on disk, so read the command's failure mode before you delete anything.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th><th>What to do</th></tr></thead>
+          <tbody>
+            <tr><td><code>0</code></td><td>Success</td><td>Continue to the next verification step.</td></tr>
+            <tr><td><code>1</code></td><td>Operational failure</td><td>Read the error, check inputs and native library, and fix the cause.</td></tr>
+            <tr><td><code>2</code></td><td>Usage error</td><td>Run the command's <code>--help</code> and correct the flags.</td></tr>
+            <tr><td><code>3</code></td><td>Incomplete trace</td><td>The program may still be written with throwers. Inspect stopped functions before use.</td></tr>
+            <tr><td><code>4</code></td><td>Undeclared generated name</td><td><code>trace thread</code> only. Inspect the emitted JavaScript and naming scope.</td></tr>
+            <tr><td><code>5</code></td><td>Self-check difference</td><td><code>trace thread</code> only. The JavaScript was written; inspect the self-check report.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>trace corpus</code> returns 0 for no regression and 1 for a regression or error. <code>trace program</code> returns 0 when every function traced, 3 when some function stopped, 1 for a capture, artifact, walk, emission, or placement error, and 2 for usage. Summaries go to stderr; help goes to stdout.</p>
+
+      <h2 id="documents">Documents and versioning</h2>
+      <p>Shape has several documents that describe different layers. They are not interchangeable. A kernel artifact is not a decode artifact, and a compact schema cannot decode.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Document</th><th>Produced by</th><th>Contains</th><th>Reused by</th></tr></thead>
+          <tbody>
+            <tr><td>Kernel artifact</td><td><code>shape report</code>, <code>deob --report</code></td><td>Source-free kernel facts: entry, tables, bytecode, module bytes</td><td><code>trace thread --report</code></td></tr>
+            <tr><td>Traced program</td><td><code>trace program</code></td><td>Linked JavaScript for every reachable thread</td><td><code>signals</code>, <code>naming</code>, <code>pin</code>, <code>artifact.compile</code></td></tr>
+            <tr><td>Session</td><td><code>session.from_initializer</code>, <code>pin</code></td><td>Transaction token, alphabet, shuffle key, cipher keys, optional nonce</td><td><code>pin</code>, <code>artifact.compile</code>, every decode</td></tr>
+            <tr><td>Pinned layout</td><td><code>shape pin</code></td><td>Structural report slots and session layout</td><td>Framing commands; lacks executable signal recipes</td></tr>
+            <tr><td>Decode artifact</td><td><code>artifact.compile</code>, <code>decode --save-artifact</code></td><td>Layout, cipher settings, session defaults, compiled signal recipes</td><td>Every SDK generator, <code>decode --artifact</code></td></tr>
+            <tr><td>Compact schema</td><td><code>artifact.compact_schema</code>, generator <code>schema</code></td><td>Descriptive view of a decode artifact</td><td>Inspection only; cannot decode</td></tr>
+            <tr><td>Decoded payload</td><td><code>decode</code></td><td>Named fields plus retained report context</td><td>Full-payload edits and exact re-encoding</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Each document is versioned. A document from a different version is rejected rather than guessed at. Keep the version tag intact when passing documents between processes or languages. Keep the full decoded payload when you need later edits; saving only <code>positionalSignals</code> selects new construction.</p>
+
+      <h2 id="file-map">File map</h2>
+      <p>The repository separates the engine, the CLI, the bindings, and the tests. Use this map when you need to find the owner of a behavior or a fixture.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">tree</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>shape.rs, cli/          the shape binary and command implementations
+src/                    engine: deobfuscation, tracing, naming, signals, codec
+sdk/c/                  C ABI crate, header, samples, consumer tests
+sdk/python/             Python ctypes binding and tests
+sdk/node/               Node addon, ESM entry, TypeScript types, tests
+sdk/go/                 Go cgo binding and tests
+sdk/rust/               Rust SDK guide over the root crate
+sdk/tests/              five-language contract harness
+tests/                  Rust integration tests and committed fixtures
+docs/                   contracts, workflows, and source references
+scripts/                build-sdk.sh and documentation checks
+reports/                Git-ignored local output</code></pre>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Need</th><th>Start at</th></tr></thead>
+          <tbody>
+            <tr><td>CLI build and workflow</td><td><code>README.md</code></td></tr>
+            <tr><td>Trace command shapes</td><td><code>docs/tracing/trace-cli.md</code></td></tr>
+            <tr><td>Decode and direct mode</td><td><code>docs/signals/decode-checkpoint.md</code></td></tr>
+            <tr><td>Capture acquisition</td><td><code>docs/deob/seeds.md</code></td></tr>
+            <tr><td>Payload and header framing</td><td><code>docs/generator/README.md</code></td></tr>
+            <tr><td>SDK behavior and operation matrix</td><td><code>sdk/README.md</code></td></tr>
+            <tr><td>Five-language contract</td><td><code>sdk/tests/README.md</code></td></tr>
+            <tr><td>Architecture and boundaries</td><td><code>docs/architecture.md</code></td></tr>
+            <tr><td>CLI module ownership</td><td><code>cli/README.md</code></td></tr>
+            <tr><td>Regression test groups</td><td><code>tests/README.md</code></td></tr>
+            <tr><td>Docs CI checks</td><td><code>.github/workflows/docs-check.yml</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="background">Background</h2>
+      <p>Shape turns captured JavaScript into inspectable VM facts and, where the source supports it, traced JavaScript. The architecture separates source preparation, static proof, bounded execution, and code emission. Each stage carries the evidence needed by the next.</p>
+      <div class="codeblock">
+        <div class="code-head"><span class="code-lang">pipeline</span><button class="copy-btn" type="button"><span class="copy-label">Copy</span></button></div>
+        <pre><code>seed.raw.js -- deob ---------------&gt; readable kernel JavaScript
+            +- trace program ------&gt; traced program (linked JavaScript)
+init.js ----- session.from_initializer --&gt; session (token, alphabet, keys)
+                                           |
+traced program + session + site ID -- artifact.compile --&gt; decode artifact
+                                                           |
+headers.json ---------------------------- decode &lt;----------+
+                                           |
+                             named fields in positionalSignals
+                                           |
+                             explain one signal, edit fields
+                                           |
+headers.json &lt;--------------------------- encode</code></pre>
+      </div>
+      <h3>Static analysis, not execution</h3>
+      <p>Source preparation runs CLEAN, RENAME, FIND, and EXTRACT, followed by presentation passes. It records typed facts and their evidence. The tracer runs admitted symbolic recipes. It does not execute captured JavaScript or WebAssembly. A handler in the operation table does not by itself prove that its behavior is admitted for tracing.</p>
+      <h3>Two reuse points</h3>
+      <p>A kernel artifact shares source analysis across process boundaries. A decode artifact carries the compiled recipes and session settings for repeated decoding. They solve different problems and cannot replace one another. A cache hit skips kernel compilation; it does not skip tracing. A saved decode artifact skips source analysis on reuse; it does not make a different capture compatible.</p>
+      <h3>Why the matching set matters</h3>
+      <p>Coordinates, handler keys, salts, and layouts belong to a particular build. The artifact stores session defaults and recipes for that build. Headers from another build can look valid and still fail verification. Keep the artifact with its matching site, build, and session, and re-run analysis for a different build.</p>
+      <h3>Performance notes</h3>
+      <p>Raw-seed recovery compiles kernel facts, traces reachable threads, cleans the recovered program, then extracts layouts and compiles recipes. That is a seconds-to-minutes operation. Use release builds and bound the work with <code>--steps</code> or SDK <code>jobs</code>. Loaded artifacts are immutable and reusable; each decode returns its own mutable request data. Copy a decoded object if you need to keep both the original and edited versions.</p>
+      <h3>Security and data handling</h3>
+      <p>Only <code>shape seeds fetch</code> uses the network. Static analysis never executes captured code. Private programs, initializer material, and generated artifacts should stay local and out of tracked fixtures. Use the Git-ignored <code>reports/</code> directory for local outputs, and keep captured data out of <code>src/</code>.</p>
+
+      <footer class="footer">
+        <p>Shape operator runbook. Built from the repository documentation at <code>D:\Projects\Shape</code>. Commands assume the repository root unless a step says otherwise.</p>
+        <p><a href="#top">Back to top</a></p>
+      </footer>
+    </article>
+  </main>
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-title">On this page</p>
+    <a href="#when-to-use">When to use this</a>
+    <a href="#fast-path">Fast path</a>
+    <a href="#environment">Environment and inputs</a>
+    <a href="#build-cli">Build the CLI</a>
+    <a href="#build-sdk">Build the SDK</a>
+    <a href="#acquire-capture">Acquire a capture</a>
+    <a href="#trace-program">Trace the program</a>
+    <a href="#compile-artifact">Compile the artifact</a>
+    <a href="#edit-encode">Decode, edit, encode</a>
+    <a href="#verification">Verification gate</a>
+    <a href="#test-matrix">Test matrix</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+    <a href="#rollback">Rollback</a>
+    <a href="#exit-codes">Exit codes</a>
+    <a href="#documents">Documents</a>
+    <a href="#file-map">File map</a>
+    <a href="#background">Background</a>
+  </aside>
+</div>
+<script>
+(function () {
+  var root = document.documentElement;
+  var themeBtn = document.getElementById('theme-btn');
+  function setTheme(theme) {
+    root.dataset.theme = theme;
+    try { localStorage.setItem('shape-theme', theme); } catch (e) {}
+    if (themeBtn) {
+      themeBtn.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+    }
+  }
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
+    });
+    setTheme(root.dataset.theme || 'light');
+  }
+
+  var menuBtn = document.getElementById('menu-btn');
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('overlay');
+  function setNav(open) {
+    document.body.classList.toggle('nav-open', open);
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', String(open));
+  }
+  if (menuBtn) {
+    menuBtn.addEventListener('click', function () {
+      setNav(!document.body.classList.contains('nav-open'));
+    });
+  }
+  if (overlay) overlay.addEventListener('click', function () { setNav(false); });
+  document.querySelectorAll('.sidebar a').forEach(function (link) {
+    link.addEventListener('click', function () { setNav(false); });
+  });
+
+  var search = document.getElementById('nav-search');
+  var navLinks = Array.prototype.slice.call(document.querySelectorAll('.nav-link'));
+  var navEmpty = document.getElementById('nav-empty');
+  function filterNav() {
+    var q = (search && search.value || '').trim().toLowerCase();
+    var shown = 0;
+    navLinks.forEach(function (link) {
+      var hit = !q || link.textContent.toLowerCase().indexOf(q) !== -1;
+      link.hidden = !hit;
+      if (hit) shown++;
+    });
+    document.querySelectorAll('.nav-group').forEach(function (group) {
+      var any = group.querySelector('.nav-link:not([hidden])');
+      group.hidden = !any;
+    });
+    if (navEmpty) navEmpty.classList.toggle('is-visible', shown === 0);
+  }
+  if (search) {
+    search.addEventListener('input', filterNav);
+    search.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        var first = navLinks.filter(function (link) { return !link.hidden; })[0];
+        if (first) {
+          window.location.hash = first.getAttribute('href');
+          first.click();
+          search.blur();
+        }
+      }
+      if (event.key === 'Escape') {
+        search.value = '';
+        filterNav();
+        search.blur();
+      }
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      if (search) {
+        search.focus();
+        search.select();
+      }
+    }
+    if (event.key === 'Escape') setNav(false);
+  });
+
+  document.querySelectorAll('.content h2, .content h3').forEach(function (heading) {
+    if (!heading.id) return;
+    var anchor = document.createElement('a');
+    anchor.className = 'anchor';
+    anchor.href = '#' + heading.id;
+    anchor.textContent = '#';
+    anchor.setAttribute('aria-label', 'Link to ' + heading.textContent);
+    heading.appendChild(anchor);
+  });
+
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var observed = Array.prototype.slice.call(document.querySelectorAll('.content h2[id], .content h3[id]'));
+  function activate(id) {
+    tocLinks.forEach(function (link) {
+      link.classList.toggle('is-active', link.getAttribute('href') === '#' + id);
+    });
+    document.querySelectorAll('.nav-link').forEach(function (link) {
+      link.classList.toggle('is-active', link.getAttribute('href') === '#' + id);
+    });
+  }
+  function updateActive() {
+    if (!observed.length) return;
+    var current = observed[0];
+    for (var i = 0; i < observed.length; i++) {
+      if (observed[i].getBoundingClientRect().top <= 120) current = observed[i];
+    }
+    activate(current.id);
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      updateActive();
+      ticking = false;
+    });
+  }, { passive: true });
+  window.addEventListener('resize', updateActive);
+  updateActive();
+
+  function copyText(text, button) {
+    function done() {
+      var label = button.querySelector('.copy-label');
+      if (label) label.textContent = 'Copied';
+      button.classList.add('is-copied');
+      setTimeout(function () {
+        if (label) label.textContent = 'Copy';
+        button.classList.remove('is-copied');
+      }, 1400);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+  function fallbackCopy(text, done) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(area);
+  }
+  document.querySelectorAll('.copy-btn').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var block = button.closest('.codeblock');
+      var code = block && block.querySelector('code');
+      if (code) copyText(code.textContent, button);
+    });
+  });
+
+  document.querySelectorAll('.tabs').forEach(function (tabs) {
+    var buttons = Array.prototype.slice.call(tabs.querySelectorAll('.tab-btn'));
+    var panels = Array.prototype.slice.call(tabs.querySelectorAll('.tab-panel'));
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        buttons.forEach(function (b) {
+          var on = b === button;
+          b.setAttribute('aria-selected', String(on));
+          b.tabIndex = on ? 0 : -1;
+        });
+        panels.forEach(function (panel) {
+          panel.hidden = panel.id !== button.getAttribute('aria-controls');
+        });
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>
